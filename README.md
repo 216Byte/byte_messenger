@@ -20,7 +20,7 @@ byte_messenger is a simple, encrypted, peer-to-peer chat application written in 
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/216Byte/byte_messenger.git
 cd byte_messenger
 ```
 
