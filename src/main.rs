@@ -19,7 +19,6 @@ struct SessionKey {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
     print!("\x1B[2J\x1B[1;1H"); 
     
     println!("===========================================");
@@ -28,7 +27,7 @@ async fn main() -> Result<()> {
 
     println!("Select Mode:");
     println!("1. HOST (Wait for a friend to connect)");
-    println!("2. CONNECT (Connect to a friend's host)");
+    println!("2. CONNECT (Join a friend's lobby)");
     print!("\nSelection > ");
     
     std::io::stdout().flush()?;
@@ -55,14 +54,14 @@ async fn run_host() -> Result<()> {
     let port = port_input.trim();
     let port = if port.is_empty() { "8080" } else { port };
 
-    // bind to 0.0.0.0 (everyone)
+    // bind to address
     let addr = format!("0.0.0.0:{}", port);
     let listener = TcpListener::bind(&addr).await?;
 
     println!("\n-------------------------------------------");
     println!("Hosting started!");
     
-    // detect  local ip to help
+    // detect local ip
     if let Some(ip) = get_local_ip() {
         println!("Your Local IP: \x1b[32m{}:{}\x1b[0m", ip, port);
         println!("(If over the internet, give your friend your PUBLIC IP)");
@@ -79,7 +78,7 @@ async fn run_host() -> Result<()> {
 }
 
 async fn run_client() -> Result<()> {
-    // ask addy
+    // ask full address
     print!("Enter Friend's Address (e.g., 192.168.1.5:8080): ");
     std::io::stdout().flush()?;
     
@@ -95,27 +94,27 @@ async fn run_client() -> Result<()> {
 }
 
 async fn handle_connection(mut socket: TcpStream) -> Result<()> {
-    // generate ephemeral key (only ram dw)
+    // generate ephemeral key pair
     let my_secret = EphemeralSecret::random_from_rng(OsRng);
     let my_public = PublicKey::from(&my_secret);
 
-    // send public key
+    // send pub key
     let my_pub_bytes = my_public.as_bytes();
     socket.write_all(my_pub_bytes).await?;
 
-    // receive public key
+    // receive remote public key
     let mut remote_pub_bytes = [0u8; 32];
     socket.read_exact(&mut remote_pub_bytes).await?;
     let remote_public = PublicKey::from(remote_pub_bytes);
 
-    // verify fingerprint
+    // verification
     let fingerprint = Sha256::digest(remote_pub_bytes);
     println!("\nSECURITY CHECK");
     println!("Confirm this Fingerprint matches your friend's screen:");
-    println!("\x1b[33m{}\x1b[0m", hex::encode(fingerprint));
+    println!("\x1b[33m{}\x1b[0m", hex::encode(fingerprint)); // Yellow text
     println!("-------------------------------------------\n");
 
-    // ecdh
+    // ECDH
     let shared_secret = my_secret.diffie_hellman(&remote_public);
     let session_key = SessionKey {
         key: *shared_secret.as_bytes(), 
@@ -149,7 +148,7 @@ async fn chat_loop(socket: TcpStream, key: Arc<SessionKey>) -> Result<()> {
 
             match cipher.decrypt(nonce, ciphertext) {
                 Ok(plaintext) => {
-                    // clears input line
+                    // clears the "you" prompt line
                     print!("\r\x1b[36mFriend:\x1b[0m {}\nYou: ", String::from_utf8_lossy(&plaintext));
                     std::io::stdout().flush().unwrap();
                 }
@@ -158,7 +157,7 @@ async fn chat_loop(socket: TcpStream, key: Arc<SessionKey>) -> Result<()> {
         }
     });
 
-    // handles outgoing messages
+    // handles messages
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
     let mut line = String::new();
     
@@ -168,7 +167,7 @@ async fn chat_loop(socket: TcpStream, key: Arc<SessionKey>) -> Result<()> {
         
         line.clear();
         let bytes_read = stdin.read_line(&mut line).await?;
-        if bytes_read == 0 { break; } 
+        if bytes_read == 0 { break; } // EOF
 
         let plaintext = line.trim().as_bytes();
         if plaintext.is_empty() { continue; }
@@ -193,10 +192,10 @@ async fn chat_loop(socket: TcpStream, key: Arc<SessionKey>) -> Result<()> {
     Ok(())
 }
 
-/// helper to get the local ip addr
+// to help the user find their local IP
 fn get_local_ip() -> Option<std::net::IpAddr> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
-    // don't actually connect, just use this to determine the local ip
+    // don't actually connect, its just  to determine it
     socket.connect("8.8.8.8:80").ok()?;
     socket.local_addr().ok().map(|addr| addr.ip())
 }
